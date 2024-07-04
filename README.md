@@ -77,7 +77,7 @@ The components of the GUI (above) are as follows:
 6. In order to escalate the privilege to admin, we will need to modify the plaintext to **{"userid":"100","isAdmin":"True"}** and convert it to a hexadecimal value.
 ![picture](./images/PKCS7_ConvertPlaintextToHex.PNG)
 
-7. Copy the hexadecimal value to the **Plaintext** textbox and click the **Encrypt** button to compute the corresponding ciphertext.
+7. Copy the hexadecimal value to the **Plaintext** textbox and click the **Encrypt** button to compute the corresponding IV || ciphertext.
 ![picture](./images/PKCS7_Encrypt.PNG)
 
 8. Update the http request with the newly computed ciphertext and send the request to the server. Notice that we are now login as an admin.

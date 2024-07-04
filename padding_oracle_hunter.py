@@ -334,9 +334,9 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         plaintext=""
         blocktext=""        
         
-        #Remove IV from the ciphertext if it is being included and append it to beginning of the ciphertext
-        encrypted_string = encrypted_string.replace(self.gIvPKCS7,"")
-        encrypted_string = self.gIvPKCS7 + encrypted_string
+        # Prepend IV to the ciphertext if it is not in the ciphertext
+        if (encrypted_string[0:blockLen] != self.gIvPKCS7):
+            encrypted_string = self.gIvPKCS7 + encrypted_string
 
         payloadLen = len(encrypted_string)
         nbOfBlock = payloadLen//blockLen
