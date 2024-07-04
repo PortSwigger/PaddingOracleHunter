@@ -576,7 +576,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
 
         self.__jLabelIvPKCS7 = JLabel("IV:")        
         self.__textIvPKCS7 = JTextField()
-        self.__textIvPKCS7.setToolTipText("IV in hexadecimal, only use in decryption operation. If it is empty, the first 16 bytes of the ciphertext will be the IV")
+        self.__textIvPKCS7.setToolTipText("IV in hexadecimal, only use in decryption operation. If it is empty, the first block of the selected payload will be used as IV")
 
         self.__jProgressBarPKCS7 = JProgressBar()
             
