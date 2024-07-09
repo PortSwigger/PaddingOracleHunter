@@ -165,17 +165,21 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         if len(resCount)==2:
             validPadRes = ""
             invalidPadRes = ""
+            isValidPadResFound = False
+            isInvalidPadResFound = False
             for response in resCount:            
                 # if there is 1 unique response, it is likely the valid padding response           
-                if(resCount[response]==1):                
+                if(resCount[response]==1):
+                    isValidPadResFound = True                
                     validPadRes = response
 
                 # there should be 255 same reponses for invalid padding
                 elif(resCount[response]==255):
+                    isInvalidPadResFound = True
                     invalidPadRes = response
             
             # check and print the result
-            if(validPadRes!="" and invalidPadRes!=""):
+            if(isValidPadResFound==True and isInvalidPadResFound==True):
                 self.__jTextAreaOutputPKCS7.setForeground(Color(255, 0, 0))
                 key_list = list(self.gresDictPKCS7.keys())
                 val_list = list(self.gresDictPKCS7.values())
