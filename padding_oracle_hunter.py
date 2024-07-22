@@ -27,6 +27,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
     gIsPayloadUrlEncodedPKCS7 = False
     gresDictPKCS7={}
     gPlaintextPKCS7 = ""
+    gIvPKCS7 = ""
     gBlockSizePKCS7 = ""
     gThreadPKCS7 = ""
     gPadMsgPKCS7 = ""
@@ -164,17 +165,21 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         if len(resCount)==2:
             validPadRes = ""
             invalidPadRes = ""
+            isValidPadResFound = False
+            isInvalidPadResFound = False
             for response in resCount:            
                 # if there is 1 unique response, it is likely the valid padding response           
-                if(resCount[response]==1):                
+                if(resCount[response]==1):
+                    isValidPadResFound = True                
                     validPadRes = response
 
                 # there should be 255 same reponses for invalid padding
                 elif(resCount[response]==255):
+                    isInvalidPadResFound = True
                     invalidPadRes = response
             
             # check and print the result
-            if(validPadRes!="" and invalidPadRes!=""):
+            if(isValidPadResFound==True and isInvalidPadResFound==True):
                 self.__jTextAreaOutputPKCS7.setForeground(Color(255, 0, 0))
                 key_list = list(self.gresDictPKCS7.keys())
                 val_list = list(self.gresDictPKCS7.values())
@@ -304,6 +309,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
                     ciphertext = hex(decb4xor ^ int(plaintextblock[i][index:index+2],16)).rstrip("L").replace('0x','').rjust(2,'0') + ciphertext                    
                 else:
                     self.DisplayOutput_PKCS7("\nUnable to find valid padding!\n")
+                    self.__jProgressBarPKCS7.setString("")
                     return
 
             # assigned the current recovered ciphertext to encrypted payload
@@ -330,14 +336,20 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         # initialize the variables        
         blockLen = int(self.gBlockSizePKCS7)*2        
         plaintext=""
-        blocktext=""    
+        blocktext=""        
+        
+        # Prepend IV to the ciphertext if it is not in the ciphertext
+        if (encrypted_string[0:blockLen] != self.gIvPKCS7):
+            encrypted_string = self.gIvPKCS7 + encrypted_string
+
         payloadLen = len(encrypted_string)
         nbOfBlock = payloadLen//blockLen
         dummyblock = self.GetDummyBlock_PKCS7(blockLen*(nbOfBlock-1))
-        # iv = encrypted_string[0:blockLen]        
+        
         blockCounter=1
 
-        self.DisplayOutput_PKCS7("Decrypting ciphertext: {}\n".format(self.gSelectedPayloadPKCS7))        
+        self.DisplayOutput_PKCS7("Decrypting ciphertext: {}\n".format(encrypted_string[blockLen::]))        
+        self.DisplayOutput_PKCS7("IV: {}\n".format(self.gIvPKCS7))        
 
         # limit the number of thread to 256
         numberOfThread = int(self.gThreadPKCS7)
@@ -404,10 +416,10 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
                     q.task_done()
                     decb4xorstring =  hex(decb4xor).rstrip("L").replace('0x','').rjust(2,'0') + decb4xorstring
                     index = blockLen-(numOfPad*2)                    
-                    blocktext = hex(decb4xor ^ int(currentByte,16)).rstrip("L").replace('0x','').rjust(2,'0') + blocktext
-                    
+                    blocktext = hex(decb4xor ^ int(currentByte,16)).rstrip("L").replace('0x','').rjust(2,'0') + blocktext                    
                 else:
-                    self.DisplayOutput_PKCS7("\nUnable to find correct padding!\n")                    
+                    self.DisplayOutput_PKCS7("\nUnable to find correct padding!\n")
+                    self.__jProgressBarPKCS7.setString("")
                     return
             plaintext = blocktext + plaintext
             self.DisplayOutput_PKCS7("block {}: {}\n".format(blockCounter,blocktext))
@@ -447,8 +459,18 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
             # check if the payload is selected
             if self.gSelectedPayloadPKCS7==None:
                 JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Incorrect payload selection!", "Error", JOptionPane.ERROR_MESSAGE)
-                return False                                    
+                return False
             
+            # Get block size
+            self.gBlockSizePKCS7 = self.__jComboBoxBlockSizePKCS7.getSelectedItem()                         
+
+            # Get number of thread
+            thread = re.sub('\W+','',self.__textThreadPKCS7.getText())
+            if thread=="":
+                  JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Please provide a valid thread number!", "Error", JOptionPane.ERROR_MESSAGE)
+                  return False
+            self.gThreadPKCS7 = thread
+
             # Get plaintext for encryption operation
             if mode=="encrypt":
                 plaintext_string = re.sub('\W+','', self.__textPlaintextPKCS7.getText())
@@ -458,21 +480,33 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
 
                 # check whether the plaintext is hexadecimal value
                 unhexlify(plaintext_string.encode())
-                self.gPlaintextPKCS7 = plaintext_string       
-
-            # Get block size
-            blocksize = re.sub('\W+','', self.__textBlockSizePKCS7.getText())
-            if blocksize=="":
-                  JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Please provide a valid block size in byte!", "Error", JOptionPane.ERROR_MESSAGE)
-                  return False                       
-            self.gBlockSizePKCS7 = blocksize
-
-            # Get number of thread
-            thread = re.sub('\W+','',self.__textThreadPKCS7.getText())
-            if thread=="":
-                  JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Please provide a valid thread number!", "Error", JOptionPane.ERROR_MESSAGE)
-                  return False
-            self.gThreadPKCS7 = thread
+                self.gPlaintextPKCS7 = plaintext_string            
+            
+            # verify the length of ciphertext and IV
+            if mode=="decrypt" or mode=="test":                
+                # The length of the ciphertext need to be multiple of block size
+                if((len(self.gPayloadPKCS7)+(int(self.gBlockSizePKCS7)*2)) % (int(self.gBlockSizePKCS7)*2)!=0):
+                    JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Invalid length of the selected ciphertext!", "Error", JOptionPane.ERROR_MESSAGE)
+                    return False
+                
+                # Validate for IV                                               
+                iv_string = re.sub('\W+','', self.__textIvPKCS7.getText())
+                # IV is provided
+                if iv_string!="":                    
+                    # check whether the length of IV is same as the block size
+                    if len(iv_string)!=int(self.gBlockSizePKCS7)*2:
+                        JOptionPane.showMessageDialog(self._jPaddingOracleTab, "The length of the IV must be the same as Block Size!", "Error", JOptionPane.ERROR_MESSAGE)
+                        return False
+                    # check whether the iv is hexadecimal value
+                    unhexlify(iv_string.encode())
+                    self.gIvPKCS7 = iv_string
+                # No IV is provided
+                else:
+                    # check ciphertext length need to be at least 2 block
+                    if(len(self.gPayloadPKCS7) < int(self.gBlockSizePKCS7)*4):
+                        JOptionPane.showMessageDialog(self._jPaddingOracleTab, "Insufficient length of the ciphertext, it needs to has at least 2 blocks!", "Error", JOptionPane.ERROR_MESSAGE)
+                        return False
+                    self.gIvPKCS7 = self.gPayloadPKCS7[0:int(self.gBlockSizePKCS7)*2]                
 
             # Only used in the encryption or decryption operations
             if mode!="test":
@@ -507,9 +541,9 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         self.__textThreadPKCS7 = JTextField("1")
         self.__textThreadPKCS7.setToolTipText("number of thread")        
 
-        self.__jLabelBlockSizePKCS7 = JLabel("Block Size:")        
-        self.__textBlockSizePKCS7 = JTextField("16")
-        self.__textBlockSizePKCS7.setToolTipText("block size (byte)")        
+        self.__jLabelBlockSizePKCS7 = JLabel("Block Size:")
+        self.__jComboBoxBlockSizePKCS7 = JComboBox(['16', '8'])
+        self.__jComboBoxBlockSizePKCS7.setSelectedIndex(0)
 
         self.__jLabelPadMessagePKCS7 = JLabel("Padding Response:")        
         self.__textPadMessagePKCS7 = JTextField()        
@@ -544,6 +578,10 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         self.__textPlaintextPKCS7 = JTextField()
         self.__textPlaintextPKCS7.setToolTipText("plaintext in hexadecimal, only use in the encryption operation")
 
+        self.__jLabelIvPKCS7 = JLabel("IV:")        
+        self.__textIvPKCS7 = JTextField()
+        self.__textIvPKCS7.setToolTipText("IV in hexadecimal, only use in decryption operation. If it is empty, the first block of the selected payload will be used as IV")
+
         self.__jProgressBarPKCS7 = JProgressBar()
             
         jPanelLayoutPKCS7.setHorizontalGroup(   
@@ -568,13 +606,15 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
                           .addComponent(self.__jLabelThreadPKCS7)
                           .addComponent(self.__jLabelBlockSizePKCS7)                
                           .addComponent(self.__jLabelPadMessagePKCS7)
-                          .addComponent(self.__jLabelPlaintextPKCS7))
+                          .addComponent(self.__jLabelPlaintextPKCS7)
+                          .addComponent(self.__jLabelIvPKCS7))
                 .addGroup( 
                           jPanelLayoutPKCS7.createParallelGroup()                                   
                           .addComponent(self.__textThreadPKCS7, GroupLayout.PREFERRED_SIZE, 112, GroupLayout.PREFERRED_SIZE)
-                          .addComponent(self.__textBlockSizePKCS7, GroupLayout.PREFERRED_SIZE, 112, GroupLayout.PREFERRED_SIZE)
+                          .addComponent(self.__jComboBoxBlockSizePKCS7,GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE)                          
                           .addComponent(self.__textPadMessagePKCS7, GroupLayout.PREFERRED_SIZE, 870, GroupLayout.PREFERRED_SIZE)                          
-                          .addComponent(self.__textPlaintextPKCS7, GroupLayout.PREFERRED_SIZE, 870, GroupLayout.PREFERRED_SIZE))
+                          .addComponent(self.__textPlaintextPKCS7, GroupLayout.PREFERRED_SIZE, 870, GroupLayout.PREFERRED_SIZE)
+                          .addComponent(self.__textIvPKCS7, GroupLayout.PREFERRED_SIZE, 870, GroupLayout.PREFERRED_SIZE))
                 .addGap(20, 20, 20)  
                 .addComponent(self.__jComboBoxPadMsgPKCS7,GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))                
                 
@@ -614,7 +654,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
             .addGroup(
                 jPanelLayoutPKCS7.createParallelGroup()
                 .addComponent(self.__jLabelBlockSizePKCS7)
-                .addComponent(self.__textBlockSizePKCS7, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+                .addComponent(self.__jComboBoxBlockSizePKCS7, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))                
             .addGap(20, 20, 20)
             .addGroup(
                 jPanelLayoutPKCS7.createParallelGroup()
@@ -626,6 +666,11 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
                 jPanelLayoutPKCS7.createParallelGroup()
                 .addComponent(self.__jLabelPlaintextPKCS7)
                 .addComponent(self.__textPlaintextPKCS7, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
+            .addGap(20, 20, 20)
+            .addGroup(
+                jPanelLayoutPKCS7.createParallelGroup()
+                .addComponent(self.__jLabelIvPKCS7)
+                .addComponent(self.__textIvPKCS7, GroupLayout.PREFERRED_SIZE, GroupLayout.DEFAULT_SIZE, GroupLayout.PREFERRED_SIZE))
             .addGap(20, 20, 20)
             .addComponent(self.__jLabelOutPKCS7)
             .addComponent(self.__jScrollPaneOutPKCS7,GroupLayout.PREFERRED_SIZE, 0, Short.MAX_VALUE)
@@ -758,6 +803,7 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
         # Reset all the fields        
         self.__textPadMessagePKCS7.setText("")
         self.__textPlaintextPKCS7.setText("")
+        self.__textIvPKCS7.setText("")
         self.__jTextAreaOutputPKCS7.setText("")        
 
         # switch to the PKCS7 tab              
@@ -1455,4 +1501,4 @@ class BurpExtender(IBurpExtender, IContextMenuFactory, ITab, IExtensionStateList
 
 
     def printInfo(self):
-        print('Padding Oracle Hunter v1.1\nCreated by: GovTech (Tan Inn Fung)')
+        print('Padding Oracle Hunter v1.2\nCreated by: GovTech (Tan Inn Fung)')

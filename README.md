@@ -12,16 +12,17 @@ The following GUI can be used to identify and perform the padding oracle attack 
 	 
 The components of the GUI (above) are as follows:
 1. Http request window.
-2. Panel to select the payload and its format. To achieve full decryption, the payload is expected to be in the format of IV || ciphertext.
+2. Panel to select the payload and its format. The selected payload is expected to be either in the format of IV || ciphertext or ciphertext. If only ciphertext is selected, IV must be provided to achieve full decryption.
 3. The number of threads used to perform the attack. With more threads, the computation is expected to be faster.
 4. The block size of the encryption protocol.
 5. The unique response from the server (partial or full) due to valid or invalid padding. Only used in the encryption and decryption operations.
 6. The plaintext which will be used to compute the ciphertext. Only used in the encryption operation.
-7. Output window.
-8. Test function to verify whether the server is vulnerable to PKCS#7 padding oracle attack.
-9. Encrypt function to compute the ciphertext from the given plaintext.
-10. Decrypt function to recover the plaintext from the encrypted payload.
-11. Stop function to halt all the current operations.
+7. The IV which will be used for decryption operation. If it is empty, the first block of the selected payload will be the IV.
+8. Output window.
+9. Test function to verify whether the server is vulnerable to PKCS#7 padding oracle attack.
+10. Encrypt function to compute the ciphertext from the given plaintext.
+11. Decrypt function to recover the plaintext from the encrypted payload.
+12. Stop function to halt all the current operations.
 
 ## PKCS#1 v1.5 ##
 The following GUI can be used to identify and perform the padding oracle attack targeting the PKCS#1 v1.5 padding scheme on RSA Cryptosystem. The attack allows the plaintext to be recovered with only the public key information.
@@ -76,7 +77,7 @@ The components of the GUI (above) are as follows:
 6. In order to escalate the privilege to admin, we will need to modify the plaintext to **{"userid":"100","isAdmin":"True"}** and convert it to a hexadecimal value.
 ![picture](./images/PKCS7_ConvertPlaintextToHex.PNG)
 
-7. Copy the hexadecimal value to the **Plaintext** textbox and click the **Encrypt** button to compute the corresponding ciphertext.
+7. Copy the hexadecimal value to the **Plaintext** textbox and click the **Encrypt** button to compute the corresponding IV || ciphertext.
 ![picture](./images/PKCS7_Encrypt.PNG)
 
 8. Update the http request with the newly computed ciphertext and send the request to the server. Notice that we are now login as an admin.
