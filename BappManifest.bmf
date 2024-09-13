@@ -2,8 +2,8 @@ Uuid: 0efabfee59404068a8c4071fa18a2e00
 ExtensionType: 2
 Name: Padding Oracle Hunter
 RepoName: padding-oracle-hunter
-ScreenVersion: 1.1
-SerialVersion: 5
+ScreenVersion: 1.2
+SerialVersion: 6
 MinPlatformVersion: 0
 ProOnly: False
 Author: GovTech-CSG
